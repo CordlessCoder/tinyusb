@@ -53,6 +53,7 @@ typedef struct {
   uint8_t  ep_in;
   uint8_t  ep_out;
   uint16_t rx_xfer_len;
+  uint8_t *rx_xfer_buf;
   #endif
 } vendord_interface_t;
 
@@ -242,6 +243,22 @@ bool tud_vendor_n_read_xfer(uint8_t idx) {
   return vendord_ep_read_xfer(p_itf, p_itf->ep_out, _vendord_epbuf[idx].epout, p_itf->rx_xfer_len);
     #endif
 }
+
+bool tud_vendor_n_read_xfer_buf(uint8_t idx, uint8_t *buffer) {
+  TU_VERIFY(idx < CFG_TUD_VENDOR);
+  TU_VERIFY(buffer != NULL);
+  vendord_interface_t *p_itf = &_vendord_itf[idx];
+  #if CFG_TUD_VENDOR_TXRX_BUFFERED
+  (void)p_itf;
+  return false;
+  #else
+  TU_VERIFY(p_itf->ep_out > 0); // must be opened
+  usbd_edpt_rx_consume(p_itf->rhport, p_itf->ep_out); // arming a new receive relinquishes the previous data
+  TU_VERIFY(usbd_edpt_claim(p_itf->rhport, p_itf->ep_out));
+  p_itf->rx_xfer_buf = buffer;
+  return usbd_edpt_xfer(p_itf->rhport, p_itf->ep_out, buffer, p_itf->rx_xfer_len, false);
+  #endif
+}
   #endif
 
 
@@ -258,6 +275,22 @@ uint32_t tud_vendor_n_write(uint8_t idx, const void *buffer, uint32_t bufsize) {
   #else
   // non-fifo mode: direct transfer (ep_in is 0 while an altsetting without a bulk IN ep is active)
   return vendord_ep_write(p_itf, p_itf->ep_in, _vendord_epbuf[idx].epin, CFG_TUD_VENDOR_TX_EPSIZE, buffer, bufsize);
+  #endif
+}
+
+uint32_t tud_vendor_n_write_xfer(uint8_t idx, uint8_t *buffer, uint32_t bufsize) {
+  TU_VERIFY(idx < CFG_TUD_VENDOR, 0);
+  TU_VERIFY(buffer != NULL, 0);
+  vendord_interface_t *p_itf = &_vendord_itf[idx];
+  #if CFG_TUD_VENDOR_TXRX_BUFFERED
+  (void)p_itf;
+  (void)bufsize;
+  return 0;
+  #else
+  TU_VERIFY(usbd_edpt_claim(p_itf->rhport, p_itf->ep_in), 0);
+  const uint32_t xact_len = tu_min32(bufsize, CFG_TUD_VENDOR_TX_EPSIZE);
+  TU_ASSERT(usbd_edpt_xfer(p_itf->rhport, p_itf->ep_in, buffer, (uint16_t)xact_len, false), 0);
+  return xact_len;
   #endif
 }
 
@@ -286,6 +319,7 @@ bool tud_vendor_n_write_clear(uint8_t idx) {
   tu_edpt_stream_clear(&p_itf->tx_stream);
   return true;
 }
+
 #endif
 
 //--------------------------------------------------------------------+
@@ -955,7 +989,9 @@ bool vendord_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint
   #else
   if (ep_addr == p_vendor->ep_out) {
     // Non-FIFO mode: invoke callback with buffer
-    tud_vendor_rx_cb(idx, _vendord_epbuf[idx].epout, xferred_bytes);
+    uint8_t *buffer = p_vendor->rx_xfer_buf ? p_vendor->rx_xfer_buf : _vendord_epbuf[idx].epout;
+    p_vendor->rx_xfer_buf = NULL;
+    tud_vendor_rx_cb(idx, buffer, xferred_bytes);
     #if CFG_TUD_VENDOR_RX_MANUAL_XFER == 0
     usbd_edpt_xfer(rhport, p_vendor->ep_out, _vendord_epbuf[idx].epout, p_vendor->rx_xfer_len, false);
     #endif
