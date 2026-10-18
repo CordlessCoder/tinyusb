@@ -147,11 +147,15 @@ void tud_vendor_n_read_flush(uint8_t idx);
 #if CFG_TUD_VENDOR_RX_MANUAL_XFER
 // Start a new RX transfer to fill the RX FIFO, return false if previous transfer is still ongoing
 bool tud_vendor_n_read_xfer(uint8_t idx);
+// Start a new RX transfer into caller-owned memory.
+bool tud_vendor_n_read_xfer_buf(uint8_t idx, uint8_t *buffer);
 #endif
 
 //------------- TX -------------//
 // Write to TX FIFO. This can be buffered and not sent immediately unless buffered bytes >= USB endpoint size
 uint32_t tud_vendor_n_write(uint8_t idx, const void *buffer, uint32_t bufsize);
+// Send caller-owned memory without copying it into the class endpoint buffer.
+uint32_t tud_vendor_n_write_xfer(uint8_t idx, uint8_t *buffer, uint32_t bufsize);
 
 // Return number of bytes available for writing in TX FIFO (or endpoint if non-buffered)
 uint32_t tud_vendor_n_write_available(uint8_t idx);
@@ -246,10 +250,16 @@ TU_ATTR_ALWAYS_INLINE static inline bool tud_vendor_write_clear(void) {
 TU_ATTR_ALWAYS_INLINE static inline bool tud_vendor_read_xfer(void) {
   return tud_vendor_n_read_xfer(0);
 }
+TU_ATTR_ALWAYS_INLINE static inline bool tud_vendor_read_xfer_buf(uint8_t *buffer) {
+  return tud_vendor_n_read_xfer_buf(0, buffer);
+}
 #endif
 
 TU_ATTR_ALWAYS_INLINE static inline uint32_t tud_vendor_write(const void *buffer, uint32_t bufsize) {
   return tud_vendor_n_write(0, buffer, bufsize);
+}
+TU_ATTR_ALWAYS_INLINE static inline uint32_t tud_vendor_write_xfer(uint8_t *buffer, uint32_t bufsize) {
+  return tud_vendor_n_write_xfer(0, buffer, bufsize);
 }
 
 TU_ATTR_ALWAYS_INLINE static inline uint32_t tud_vendor_write_str(const char *str) {
