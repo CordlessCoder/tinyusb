@@ -164,6 +164,12 @@
       - CFG_TUH_ENABLED=1
       - CFG_TUH_HUB=2
       - CFG_TUSB_DEBUG=0
+    :test_usbd_edpt_placeholder:
+      - CFG_TUD_MSC=0
+      - CFG_TUD_CDC=1
+      - CFG_TUD_CDC_NOTIFY=1
+      - CFG_TUD_EDPT_PLACEHOLDER=1
+      - CFG_TUD_ENDPPOINT_MAX=6
     :test_midi2_device_gtb_default:
       - CFG_TUD_MSC=0
       - CFG_TUD_MIDI2=1
