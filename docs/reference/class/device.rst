@@ -79,7 +79,21 @@ pages.  Defaults come from ``src/tusb_option.h``.
    * - ``CFG_TUD_ENDPPOINT_MAX``
      - Controller maximum
      - Highest endpoint-number pool retained by the stack.  Lowering it can
-       save RAM, but it must cover every configured endpoint number.
+       save RAM, but it must cover every configured endpoint number except
+       placeholders.
+   * - ``CFG_TUD_EDPT_PLACEHOLDER``
+     - ``0``
+     - Compiles support for placeholder endpoints: addresses the
+       configuration descriptor declares but the stack never opens, such as a
+       CDC notification endpoint the device never sends on.  Register them
+       before ``tusb_init()`` through ``tud_configure()`` with
+       ``TUD_CFGID_EDPT_PLACEHOLDER`` and a
+       ``tud_configure_edpt_placeholder_t``, one bitmap per direction.  A
+       class opening a placeholder succeeds, transfers and stalls on it are
+       refused, and host requests addressed to it get a Request Error.  How the
+       controller answers a host that polls it depends on the controller.  A
+       placeholder may be numbered at or past ``CFG_TUD_ENDPPOINT_MAX``.  EP0
+       and isochronous endpoints cannot be placeholders.
    * - ``CFG_TUD_MEM_SECTION`` / ``CFG_TUD_MEM_ALIGN``
      - Common USB settings / 4-byte alignment
      - Places and aligns controller-facing buffers for DMA.  Override these

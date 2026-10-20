@@ -17,8 +17,18 @@ extern "C" {
 // ConfigID for tud_configure()
 enum {
   TUD_CFGID_INVALID = 0,
+  TUD_CFGID_EDPT_PLACEHOLDER = 1,
   TUD_CFGID_DWC2 = 100,
 };
+
+// Placeholder endpoints (CFG_TUD_EDPT_PLACEHOLDER), registered while the device is not configured: bit n marks
+// endpoint n. Opening one succeeds without the controller, any transfer or stall on it is refused, and a host
+// request addressed to it is stalled. Its number may be at or past CFG_TUD_ENDPPOINT_MAX. EP0 and isochronous
+// endpoints cannot be placeholders.
+typedef struct {
+  uint16_t bm_in;
+  uint16_t bm_out;
+} tud_configure_edpt_placeholder_t;
 
 typedef struct {
   uint16_t bm_double_buffered; // bitmap of IN endpoints to be double buffered, only effective for bulk endpoints
@@ -31,6 +41,7 @@ typedef struct {
 
 typedef union {
   tud_configure_dwc2_t dwc2;
+  tud_configure_edpt_placeholder_t edpt_placeholder;
 } tud_configure_param_t;
 
 //--------------------------------------------------------------------+
