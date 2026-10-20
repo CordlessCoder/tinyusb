@@ -416,6 +416,10 @@ void dcd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr)
 
 bool dcd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const * p_endpoint_desc)
 {
+  // usbd bounds the number by TUP_DCD_ENDPOINT_MAX, one value per MCU, but USB0 has five endpoint pairs where USB1
+  // has six: refuse a number past this controller's own list rather than configure an endpoint it does not have.
+  TU_ASSERT(tu_edpt_number(p_endpoint_desc->bEndpointAddress) < _dcd_controller[rhport].ep_pairs);
+
   //------------- Prepare Queue Head -------------//
   uint8_t ep_id = ep_addr2id(p_endpoint_desc->bEndpointAddress);
   ep_cmd_sts_t* ep_cs = get_ep_cs(ep_id);
@@ -470,7 +474,8 @@ bool dcd_edpt_iso_alloc(uint8_t rhport, uint8_t ep_addr, uint16_t largest_packet
   (void) largest_packet_size;
   // Reserve the endpoint command/status entry once (persists across altsetting changes); the
   // buffer pointer is filled per-transfer, so nothing to pre-allocate. Mirrors the ISO branch of
-  // dcd_edpt_open().
+  // dcd_edpt_open(), including its endpoint number bound.
+  TU_ASSERT(tu_edpt_number(ep_addr) < _dcd_controller[rhport].ep_pairs);
   uint8_t ep_id = ep_addr2id(ep_addr);
   ep_cmd_sts_t* ep_cs = get_ep_cs(ep_id);
   TU_ASSERT( ep_cs[0].cmd_sts.disable && ep_cs[1].cmd_sts.disable );
