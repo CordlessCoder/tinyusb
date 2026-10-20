@@ -662,6 +662,12 @@
   #error "CFG_TUD_ENDPPOINT_MAX must be less than or equal to TUP_DCD_ENDPOINT_MAX"
 #endif
 
+// Support for placeholder endpoints: addresses the configuration descriptor declares but the stack never
+// opens on the controller, registered with tud_configure(TUD_CFGID_EDPT_PLACEHOLDER) before init.
+#ifndef CFG_TUD_EDPT_PLACEHOLDER
+  #define CFG_TUD_EDPT_PLACEHOLDER 0
+#endif
+
 // USB 2.0 7.1.20: compliance test mode support
 #ifndef CFG_TUD_TEST_MODE
   #define CFG_TUD_TEST_MODE       0

@@ -136,6 +136,51 @@ typedef struct {
 static usbd_device_t    _usbd_dev;
 static volatile uint8_t _usbd_queued_setup;
 
+  #if CFG_TUD_EDPT_PLACEHOLDER
+// Registered placeholder endpoints: IN endpoint n is bit n, OUT endpoint n is bit 16 + n. Kept outside _usbd_dev,
+// which tud_init() and every bus reset clear.
+static uint32_t _usbd_edpt_placeholder;
+
+TU_ATTR_ALWAYS_INLINE static inline bool edpt_is_placeholder(uint8_t ep_addr) {
+  const uint8_t bit = (uint8_t)(tu_edpt_number(ep_addr) + (tu_edpt_dir(ep_addr) == TUSB_DIR_IN ? 0u : 16u));
+  return tu_bit_test(_usbd_edpt_placeholder, bit);
+}
+
+// tu_bind_driver_to_ep_itf() with one difference: an endpoint at or past CFG_TUD_ENDPPOINT_MAX is skipped when it
+// is a placeholder rather than failing the bind. Kept apart so the shared function compiles unchanged.
+static bool bind_driver_to_ep_itf(uint8_t drv_id, const uint8_t *p_desc, uint16_t desc_len) {
+  const uint8_t *desc_end = p_desc + desc_len;
+  while (tu_desc_in_bounds(p_desc, desc_end)) {
+    const uint8_t desc_type = tu_desc_type(p_desc);
+
+    if (desc_type == TUSB_DESC_ENDPOINT) {
+      const uint8_t ep_addr = ((const tusb_desc_endpoint_t *)p_desc)->bEndpointAddress;
+      const uint8_t ep_num  = tu_edpt_number(ep_addr);
+      if (ep_num < CFG_TUD_ENDPPOINT_MAX) {
+        _usbd_dev.ep2drv[ep_num][tu_edpt_dir(ep_addr)] = drv_id;
+      } else {
+        TU_ASSERT(edpt_is_placeholder(ep_addr));
+      }
+    } else if (desc_type == TUSB_DESC_INTERFACE) {
+      const tusb_desc_interface_t *desc_itf = (const tusb_desc_interface_t *)p_desc;
+      if (desc_itf->bAlternateSetting == 0) {
+        TU_ASSERT(desc_itf->bInterfaceNumber < CFG_TUD_INTERFACE_MAX);
+        _usbd_dev.itf2drv[desc_itf->bInterfaceNumber] = drv_id;
+      }
+    }
+
+    p_desc = tu_desc_next(p_desc);
+  }
+  return true;
+}
+
+  // Return _ret from the calling endpoint API when _ep_addr is a placeholder. It runs before any _usbd_dev.ep_status
+  // access: a placeholder past CFG_TUD_ENDPPOINT_MAX has no row there.
+    #define EDPT_PLACEHOLDER_RETURN(_ep_addr, _ret) TU_VERIFY(!edpt_is_placeholder(_ep_addr), _ret)
+  #else
+    #define EDPT_PLACEHOLDER_RETURN(_ep_addr, _ret) ((void)0)
+  #endif
+
 CFG_TUD_MEM_SECTION static struct {
   TUD_EPBUF_DEF(buf, CFG_TUD_ENDPOINT0_BUFSIZE);
 } _ctrl_epbuf;
@@ -520,6 +565,15 @@ bool tud_inited(void) {
 }
 
 bool tud_configure(uint8_t rhport, uint32_t cfg_id, const void* cfg_param) {
+  #if CFG_TUD_EDPT_PLACEHOLDER
+  if (cfg_id == TUD_CFGID_EDPT_PLACEHOLDER) {
+    TU_VERIFY(cfg_param != NULL && !tud_mounted());
+    const tud_configure_edpt_placeholder_t *cfg = (const tud_configure_edpt_placeholder_t *)cfg_param;
+    TU_VERIFY(((cfg->bm_in | cfg->bm_out) & 0x01u) == 0); // EP0
+    _usbd_edpt_placeholder = ((uint32_t)cfg->bm_out << 16) | cfg->bm_in;
+    return true;
+  }
+  #endif
   return dcd_configure(rhport, cfg_id, cfg_param);
 }
 
@@ -1237,6 +1291,8 @@ static bool process_setup_received(uint8_t rhport, tusb_control_request_t const 
       uint8_t const ep_num  = tu_edpt_number(ep_addr);
       uint8_t const ep_dir  = tu_edpt_dir(ep_addr);
 
+      // a placeholder has no state to report or halt: Request Error
+      EDPT_PLACEHOLDER_RETURN(ep_addr, false);
       TU_ASSERT(ep_num < TU_ARRAY_SIZE(_usbd_dev.ep2drv) );
       usbd_class_driver_t const * driver = get_driver(_usbd_dev.ep2drv[ep_num][ep_dir]);
 
@@ -1335,8 +1391,12 @@ static bool process_set_config(uint8_t rhport, uint8_t cfg_num) {
         TU_LOG_USBD("  %s opened\r\n", driver->name);
 
         // bind found driver to all interfaces and endpoint within drv_len
+  #if CFG_TUD_EDPT_PLACEHOLDER
+        TU_ASSERT(bind_driver_to_ep_itf(drv_id, p_desc, drv_len));
+  #else
         TU_ASSERT(tu_bind_driver_to_ep_itf(drv_id, _usbd_dev.ep2drv, _usbd_dev.itf2drv, CFG_TUD_INTERFACE_MAX,
                                            CFG_TUD_ENDPPOINT_MAX, p_desc, drv_len));
+  #endif
 
         p_desc += drv_len; // next Interface
         break; // exit driver find loop
@@ -1612,6 +1672,13 @@ bool usbd_defer_func_after_queue(osal_task_func_t func, void* param) {
 bool usbd_edpt_open(uint8_t rhport, tusb_desc_endpoint_t const* desc_ep) {
   rhport = _usbd_rhport;
 
+  #if CFG_TUD_EDPT_PLACEHOLDER
+  if (edpt_is_placeholder(desc_ep->bEndpointAddress)) {
+    TU_ASSERT(desc_ep->bmAttributes.xfer != TUSB_XFER_ISOCHRONOUS);
+    return tu_edpt_validate(desc_ep, (tusb_speed_t)_usbd_dev.speed);
+  }
+  #endif
+
   TU_ASSERT(tu_edpt_number(desc_ep->bEndpointAddress) < CFG_TUD_ENDPPOINT_MAX);
   TU_ASSERT(tu_edpt_validate(desc_ep, (tusb_speed_t)_usbd_dev.speed));
 
@@ -1624,6 +1691,7 @@ bool usbd_edpt_claim(uint8_t rhport, uint8_t ep_addr) {
   // TODO add this check later, also make sure we don't starve an out endpoint while suspending
   // TU_VERIFY(tud_ready());
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, false);
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir = tu_edpt_dir(ep_addr);
   return tu_edpt_claim(&_usbd_dev.ep_status[epnum][dir], _usbd_mutex);
@@ -1632,6 +1700,7 @@ bool usbd_edpt_claim(uint8_t rhport, uint8_t ep_addr) {
 bool usbd_edpt_release(uint8_t rhport, uint8_t ep_addr) {
   (void) rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, false);
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir = tu_edpt_dir(ep_addr);
   return tu_edpt_release(&_usbd_dev.ep_status[epnum][dir], _usbd_mutex);
@@ -1640,6 +1709,7 @@ bool usbd_edpt_release(uint8_t rhport, uint8_t ep_addr) {
 void usbd_edpt_rx_consume(uint8_t rhport, uint8_t ep_addr) {
   (void) rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, );
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir = tu_edpt_dir(ep_addr);
   volatile uint8_t *ep_state = &_usbd_dev.ep_status[epnum][dir];
@@ -1655,6 +1725,7 @@ void usbd_edpt_rx_consume(uint8_t rhport, uint8_t ep_addr) {
 bool usbd_edpt_xfer(uint8_t rhport, uint8_t ep_addr, uint8_t* buffer, uint16_t total_bytes, bool is_isr) {
   rhport = _usbd_rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, false);
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir = tu_edpt_dir(ep_addr);
 
@@ -1697,6 +1768,7 @@ bool usbd_edpt_xfer_fifo(uint8_t rhport, uint8_t ep_addr, tu_fifo_t* ff, uint16_
   #if CFG_TUD_EDPT_DEDICATED_HWFIFO
   rhport = _usbd_rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, false);
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir = tu_edpt_dir(ep_addr);
 
@@ -1733,6 +1805,7 @@ bool usbd_edpt_xfer_fifo(uint8_t rhport, uint8_t ep_addr, tu_fifo_t* ff, uint16_
 bool usbd_edpt_busy(uint8_t rhport, uint8_t ep_addr) {
   (void) rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, true);
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir = tu_edpt_dir(ep_addr);
 
@@ -1742,6 +1815,7 @@ bool usbd_edpt_busy(uint8_t rhport, uint8_t ep_addr) {
 void usbd_edpt_stall(uint8_t rhport, uint8_t ep_addr) {
   rhport = _usbd_rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, );
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir = tu_edpt_dir(ep_addr);
 
@@ -1754,6 +1828,7 @@ void usbd_edpt_stall(uint8_t rhport, uint8_t ep_addr) {
 void usbd_edpt_clear_stall(uint8_t rhport, uint8_t ep_addr) {
   rhport = _usbd_rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, );
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir = tu_edpt_dir(ep_addr);
 
@@ -1785,6 +1860,7 @@ void usbd_edpt_abort(uint8_t rhport, uint8_t ep_addr) {
 bool usbd_edpt_stalled(uint8_t rhport, uint8_t ep_addr) {
   (void) rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, false);
   uint8_t const epnum = tu_edpt_number(ep_addr);
   uint8_t const dir = tu_edpt_dir(ep_addr);
 
@@ -1802,6 +1878,7 @@ void usbd_edpt_close(uint8_t rhport, uint8_t ep_addr) {
 #else
   rhport = _usbd_rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, );
   TU_LOG_USBD("  CLOSING Endpoint: 0x%02X\r\n", ep_addr);
 
   uint8_t const epnum = tu_edpt_number(ep_addr);
@@ -1835,6 +1912,7 @@ bool usbd_edpt_iso_alloc(uint8_t rhport, uint8_t ep_addr, uint16_t largest_packe
 #ifdef TUP_DCD_EDPT_ISO_ALLOC
   rhport = _usbd_rhport;
 
+  EDPT_PLACEHOLDER_RETURN(ep_addr, false);
   TU_ASSERT(tu_edpt_number(ep_addr) < CFG_TUD_ENDPPOINT_MAX);
   return dcd_edpt_iso_alloc(rhport, ep_addr, largest_packet_size);
 #else
@@ -1847,6 +1925,7 @@ bool usbd_edpt_iso_activate(uint8_t rhport, tusb_desc_endpoint_t const* desc_ep)
 #ifdef TUP_DCD_EDPT_ISO_ALLOC
   rhport = _usbd_rhport;
 
+  EDPT_PLACEHOLDER_RETURN(desc_ep->bEndpointAddress, false);
   uint8_t const epnum = tu_edpt_number(desc_ep->bEndpointAddress);
   uint8_t const dir = tu_edpt_dir(desc_ep->bEndpointAddress);
 
