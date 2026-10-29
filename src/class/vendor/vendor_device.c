@@ -297,6 +297,7 @@ uint32_t tud_vendor_n_write_xfer(uint8_t idx, uint8_t *buffer, uint32_t bufsize)
   (void)bufsize;
   return 0;
   #else
+  TU_VERIFY(p_itf->ep_in > 0, 0); // must be opened
   TU_VERIFY(usbd_edpt_claim(p_itf->rhport, p_itf->ep_in), 0);
   const uint32_t xact_len = tu_min32(bufsize, CFG_TUD_VENDOR_TX_EPSIZE);
   TU_ASSERT(usbd_edpt_xfer(p_itf->rhport, p_itf->ep_in, buffer, (uint16_t)xact_len, false), 0);
