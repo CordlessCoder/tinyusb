@@ -172,3 +172,13 @@ void test_class_buffer_calls_refuse(void) {
   TEST_ASSERT_EQUAL(0, tud_vendor_n_write(0, data, sizeof(data)));
   TEST_ASSERT_EQUAL(0, xfer_count);
 }
+
+// Before a configuration opens the interface its IN endpoint is 0, and a write must not reach EP0.
+void test_write_before_configuration_refuses(void) {
+  static uint8_t buffer[512];
+  dcd_event_bus_reset(rhport, TUSB_SPEED_HIGH, false);
+  tud_task();
+  TEST_ASSERT_FALSE(tud_vendor_n_mounted(0));
+  TEST_ASSERT_EQUAL(0, tud_vendor_n_write_xfer(0, buffer, 9));
+  TEST_ASSERT_EQUAL(0, xfer_count);
+}
