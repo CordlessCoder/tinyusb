@@ -194,6 +194,13 @@
       - CFG_TUD_SYSVIEW=0
       - CFG_TUH_SYSVIEW=1
       - CFG_TUD_MSC=0
+    :test_vendor_caller_buffers:
+      - CFG_TUD_MSC=0
+      - CFG_TUD_VENDOR=1
+      - CFG_TUD_VENDOR_RX_BUFSIZE=0
+      - CFG_TUD_VENDOR_TX_BUFSIZE=0
+      - CFG_TUD_VENDOR_RX_MANUAL_XFER=1
+      - CFG_TUD_VENDOR_CALLER_BUFFERS=1
   :release: []
 
   # Enable to inject name of a test as a unique compilation symbol into its respective executable build.
