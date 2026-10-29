@@ -55,6 +55,17 @@ extern "C" {
   #define CFG_TUD_VENDOR_RX_MANUAL_XFER 0
 #endif
 
+// Every bulk transfer uses memory the application passes to tud_vendor_n_read_xfer_buf() and
+// tud_vendor_n_write_xfer(), so the class keeps no bulk endpoint buffers of its own. Needs the
+// non-buffered mode and manual RX. tud_vendor_n_read_xfer() and tud_vendor_n_write() then refuse.
+#ifndef CFG_TUD_VENDOR_CALLER_BUFFERS
+  #define CFG_TUD_VENDOR_CALLER_BUFFERS 0
+#endif
+
+#if CFG_TUD_VENDOR_CALLER_BUFFERS && (CFG_TUD_VENDOR_TXRX_BUFFERED || !CFG_TUD_VENDOR_RX_MANUAL_XFER)
+  #error "CFG_TUD_VENDOR_CALLER_BUFFERS needs CFG_TUD_VENDOR_TXRX_BUFFERED 0 and CFG_TUD_VENDOR_RX_MANUAL_XFER 1"
+#endif
+
 // Enable multi-packet RX transfer with ZLP termination for better throughput. Requires host support for ZLP.
 #ifndef CFG_TUD_VENDOR_RX_NEED_ZLP
   #define CFG_TUD_VENDOR_RX_NEED_ZLP 0

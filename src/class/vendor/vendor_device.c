@@ -68,8 +68,8 @@ typedef struct {
 
 static vendord_interface_t _vendord_itf[CFG_TUD_VENDOR];
 
-// Skip local EP buffer if dedicated hw FIFO is supported or no fifo mode
-#if CFG_TUD_EDPT_DEDICATED_HWFIFO == 0 || !CFG_TUD_VENDOR_TXRX_BUFFERED
+// Skip local EP buffer if dedicated hw FIFO is supported or no fifo mode, or if the caller supplies them
+#if (CFG_TUD_EDPT_DEDICATED_HWFIFO == 0 || !CFG_TUD_VENDOR_TXRX_BUFFERED) && !CFG_TUD_VENDOR_CALLER_BUFFERS
 typedef struct {
   TUD_EPBUF_DEF(epout, CFG_TUD_VENDOR_RX_EPSIZE);
   TUD_EPBUF_DEF(epin, CFG_TUD_VENDOR_TX_EPSIZE);
@@ -238,6 +238,10 @@ bool tud_vendor_n_read_xfer(uint8_t idx) {
     #if CFG_TUD_VENDOR_TXRX_BUFFERED
   return tu_edpt_stream_read_xfer(&p_itf->rx_stream);
 
+    #elif CFG_TUD_VENDOR_CALLER_BUFFERS
+  (void)p_itf;
+  return false; // no class buffer: tud_vendor_n_read_xfer_buf()
+
     #else
   // Non-FIFO mode (0 while an altsetting without a bulk OUT ep is active)
   return vendord_ep_read_xfer(p_itf, p_itf->ep_out, _vendord_epbuf[idx].epout, p_itf->rx_xfer_len);
@@ -271,6 +275,12 @@ uint32_t tud_vendor_n_write(uint8_t idx, const void *buffer, uint32_t bufsize) {
 
   #if CFG_TUD_VENDOR_TXRX_BUFFERED
   return tu_edpt_stream_write(&p_itf->tx_stream, buffer, bufsize);
+
+  #elif CFG_TUD_VENDOR_CALLER_BUFFERS
+  (void)p_itf;
+  (void)buffer;
+  (void)bufsize;
+  return 0; // no class buffer: tud_vendor_n_write_xfer()
 
   #else
   // non-fifo mode: direct transfer (ep_in is 0 while an altsetting without a bulk IN ep is active)
@@ -989,7 +999,11 @@ bool vendord_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint
   #else
   if (ep_addr == p_vendor->ep_out) {
     // Non-FIFO mode: invoke callback with buffer
+    #if CFG_TUD_VENDOR_CALLER_BUFFERS
+    uint8_t *buffer = p_vendor->rx_xfer_buf;
+    #else
     uint8_t *buffer = p_vendor->rx_xfer_buf ? p_vendor->rx_xfer_buf : _vendord_epbuf[idx].epout;
+    #endif
     p_vendor->rx_xfer_buf = NULL;
     tud_vendor_rx_cb(idx, buffer, xferred_bytes);
     #if CFG_TUD_VENDOR_RX_MANUAL_XFER == 0
