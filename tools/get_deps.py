@@ -69,7 +69,7 @@ deps_optional = {
                            'b41cf930e65c734d8ec6de04f1d57d46787c76ae',
                            'lpc11 lpc13 lpc15 lpc17 lpc18 lpc40 lpc43'],
     'hw/mcu/nxp/mcuxsdk-core': ['https://github.com/nxp-mcuxpresso/mcuxsdk-core',
-                            '0c5c6b16deb211110e06bde896cdff59ab213e16',
+                            'b2cee0c457e7e59bd85379fe835076f864260b93',
                             'imxrt kinetis_k32l lpc51 lpc55 mcx'],
     'hw/mcu/nxp/mcux-sdk': ['https://github.com/nxp-mcuxpresso/mcux-sdk',
                             'a1bdae309a14ec95a4f64a96d3315a4f89c397c6',
@@ -78,7 +78,7 @@ deps_optional = {
                             '98a155e666c54f396e528ec3131f27a5d5b71f76',
                             'kinetis_k32l'],
     'hw/mcu/nxp/mcux-devices-lpc': ['https://github.com/nxp-mcuxpresso/mcux-devices-lpc',
-                            '8096b783ec09d0d1c8629025a5f9d8e7df26e520',
+                            '977ea4da4f39bdc43faf11d30448733724f79166',
                             'lpc51 lpc55'],
     'hw/mcu/nxp/mcux-devices-mcx': ['https://github.com/nxp-mcuxpresso/mcux-devices-mcx',
                             'ada1c97c761123ec0c179bb9bb9f744bf9a11475',
@@ -305,7 +305,7 @@ deps_optional = {
                     'sam3x samd11 samd21 samd2x_l2x samd51 samd5x_e5x same5x same7x samg '
                     'tm4c efm32'],
     'lib/CMSIS_6': ['https://github.com/ARM-software/CMSIS_6.git',
-                    '6f0a58d01aa9bd2feba212097f9afe7acd991d52',
+                    'af1b110e46a1720349f6f125e386e126767699bd',
                     'imxrt kinetis_k32l ra stm32n6 lpc51 lpc55 mcx stm32c5'],
     # fetched by path, or for -D SYSVIEW=<level>: just traced builds need it
     'lib/SystemView': ['https://github.com/SEGGERMicro/SystemView.git',
