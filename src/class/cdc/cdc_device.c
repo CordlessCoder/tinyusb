@@ -83,6 +83,12 @@ TU_ATTR_WEAK void tud_cdc_line_state_cb(uint8_t itf, bool dtr, bool rts) {
   (void)rts;
 }
 
+TU_ATTR_WEAK bool tud_cdc_line_coding_request_cb(uint8_t itf, const cdc_line_coding_t *p_line_coding) {
+  (void)itf;
+  (void)p_line_coding;
+  return true;
+}
+
 TU_ATTR_WEAK void tud_cdc_line_coding_cb(uint8_t itf, const cdc_line_coding_t *p_line_coding) {
   (void)itf;
   (void)p_line_coding;
@@ -97,6 +103,9 @@ TU_ATTR_WEAK void tud_cdc_send_break_cb(uint8_t itf, uint16_t duration_ms) {
 // INTERNAL OBJECT & FUNCTION DECLARATION
 //--------------------------------------------------------------------+
 static cdcd_interface_t _cdcd_itf[CFG_TUD_CDC];
+
+// SET_LINE_CODING's data, until the application accepts it. EP0 serves one request at a time.
+TU_ATTR_ALIGNED(4) static cdc_line_coding_t _cdcd_requested_coding;
 
 TU_ATTR_ALWAYS_INLINE static inline uint8_t find_cdc_itf(uint8_t ep_addr) {
   for (uint8_t idx = 0; idx < CFG_TUD_CDC; idx++) {
@@ -380,7 +389,12 @@ bool cdcd_control_xfer_cb(uint8_t rhport, uint8_t stage, const tusb_control_requ
     case CDC_REQUEST_SET_LINE_CODING:
       if (stage == CONTROL_STAGE_SETUP) {
         TU_LOG_DRV("  Set Line Coding\r\n");
-        tud_control_xfer(rhport, request, &p_cdc->line_coding, sizeof(cdc_line_coding_t));
+        _cdcd_requested_coding = p_cdc->line_coding;
+        tud_control_xfer(rhport, request, &_cdcd_requested_coding, sizeof(cdc_line_coding_t));
+      } else if (stage == CONTROL_STAGE_DATA) {
+        // A refusal stalls the status stage and keeps the coding the host can read back.
+        TU_VERIFY(tud_cdc_line_coding_request_cb(itf, &_cdcd_requested_coding));
+        p_cdc->line_coding = _cdcd_requested_coding;
       } else if (stage == CONTROL_STAGE_ACK) {
         tud_cdc_line_coding_cb(itf, &p_cdc->line_coding);
       } else {

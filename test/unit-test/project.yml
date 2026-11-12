@@ -192,6 +192,9 @@
       - CFG_TUH_ENABLED=1
       - CFG_TUSB_SYSVIEW=1
       - CFG_TUD_MSC=0
+    :test_cdc_line_coding:
+      - CFG_TUD_MSC=0
+      - CFG_TUD_CDC=1
     :test_dfu_device:
       - CFG_TUD_MSC=0
       - CFG_TUD_DFU=1

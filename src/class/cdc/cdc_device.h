@@ -266,6 +266,10 @@ void tud_cdc_notify_complete_cb(uint8_t itf);
 // Invoked when line state DTR & RTS are changed via SET_CONTROL_LINE_STATE
 void tud_cdc_line_state_cb(uint8_t itf, bool dtr, bool rts);
 
+// Invoked when SET_LINE_CODING's data arrives, before the coding takes effect. Return false to refuse
+// it: the request stalls and the line coding stays as it was. The default accepts every coding.
+bool tud_cdc_line_coding_request_cb(uint8_t itf, cdc_line_coding_t const* p_line_coding);
+
 // Invoked when line coding is change via SET_LINE_CODING
 void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const* p_line_coding);
 
